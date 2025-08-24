@@ -19,6 +19,13 @@ export default function App() {
   const [resultIdx, setResultIdx] = useState(null);
   const [message,   setMessage]   = useState("");
 
+// --- 追加（モバイル最適化）---
+const isMobile =
+  typeof window !== "undefined" &&
+  window.matchMedia("(max-width: 480px)").matches;
+
+const wheelSize = isMobile ? 300 : 340; // スマホは少し小さくして全体を上に
+
   function startSpin() {
     if (spinning) return;
 
@@ -61,7 +68,7 @@ export default function App() {
   }
 
   return (
-    <div style={page}>
+    <div style={{ ...page, justifyContent: isMobile ? "flex-start" : "center", paddingTop: isMobile ? 8 : 16 }}>
       <h1 style={title}>Spia Roulette</h1>
 
       {/* 上の固定針（ここに止まった人が当たり） */}
@@ -74,15 +81,15 @@ export default function App() {
         </div>
 
         {/* ルーレット本体（円盤だけが回る） */}
-        <div style={wheelBox}>
+        <div style={{ ...wheelBox, width: wheelSize, height: wheelSize, position: "relative" }}>
           <svg
             viewBox="0 0 400 400"
             style={{
-              width: 320,
-              height: 320,
-              transform: `rotate(${rotation}deg)`,
-              transition: spinning ? "transform 3.5s cubic-bezier(0.12,0.11,0,1)" : "none",
-            }}
+  width: wheelSize - 20,
+  height: wheelSize - 20,
+  transform: `rotate(${rotation}deg)`,
+  transition: spinning ? "transform 3.5s cubic-bezier(0.12,0.11,0,1)" : "none",
+}}
           >
             <g>
               {arcs.map((a, i) => (
@@ -111,7 +118,7 @@ export default function App() {
         {spinning ? "回転中…" : "スタート"}
       </button>
 
-      <div style={{ height: 56, marginTop: 16, fontSize: 18, textAlign: "center" }}>
+      <div style={{ height: isMobile ? 40 : 56, marginTop: isMobile ? 8 : 16, fontSize: 18, textAlign: "center" }}>
         {resultIdx !== null && (
           <div>
             <div style={{ fontSize: 26, marginBottom: 4 }}>🎉</div>
@@ -185,7 +192,16 @@ function Pointer() {
 
 /* ====== 円弧のジオメトリ ====== */
 function sliceColor(i) {
-  const colors = ["#ffe4e6","#e0f2fe","#dcfce7","#fae8ff","#fde68a","#e2e8f0","#dbeafe"];
+  // くっきり認識できる彩度高めのパレット
+  const colors = [
+    "#f87171", // red-400
+    "#60a5fa", // sky-400
+    "#34d399", // emerald-400
+    "#f472b6", // pink-400
+    "#f59e0b", // amber-500
+    "#94a3b8", // slate-400
+    "#818cf8", // indigo-400
+  ];
   return colors[i % colors.length];
 }
 
