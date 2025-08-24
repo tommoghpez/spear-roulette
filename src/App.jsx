@@ -1,95 +1,121 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 
-export default function SpearRouletteApp() {
-  const segments = [
-    { label: "ソウメイ", weight: 30 },
-    { label: "真奈美",   weight: 15 },
-    { label: "MIKI",    weight: 20 },
-    { label: "さと",    weight: 10 },
-    { label: "YUTAKA",  weight: 15 },
-    { label: "永井",    weight: 5  },
-    { label: "ご指名",  weight: 5  },
-  ];
-  const total = segments.reduce((a,b)=>a+b.weight,0);
-  const [rotation,setRotation] = useState(0);
-  const [spinning,setSpinning] = useState(false);
-  const [resultIdx,setResultIdx] = useState(null);
-  const [message,setMessage] = useState("");
-  const arcs = useMemo(()=>buildArcs(segments),[segments]);
+/** ====== 設定（名前と重み％） ====== */
+const SEGMENTS = [
+  { label: "ソウメイ", weight: 30 },
+  { label: "真奈美",   weight: 15 },
+  { label: "MIKI",    weight: 20 },
+  { label: "さと",    weight: 10 },
+  { label: "YUTAKA",  weight: 15 },
+  { label: "永井",    weight: 5  },
+  { label: "ご指名",  weight: 5  }
+];
 
-  function start(){
+export default function App() {
+  const total = SEGMENTS.reduce((a, b) => a + b.weight, 0);
+  const arcs   = useMemo(() => buildArcs(SEGMENTS), []);
+  const [spinning, setSpinning]   = useState(false);
+  const [rotation, setRotation]   = useState(0);
+  const [resultIdx, setResultIdx] = useState(null);
+  const [message,   setMessage]   = useState("");
+
+  function startSpin() {
     if (spinning) return;
-    setSpinning(true); setResultIdx(null); setMessage("");
 
-    // 重み付き抽選
-    const r = Math.random()*total; let acc=0, idx=0;
-    for (let i=0;i<segments.length;i++){ acc+=segments[i].weight; if (r<=acc){ idx=i; break; } }
+    setSpinning(true);
+    setResultIdx(null);
+    setMessage("");
 
-    // 針（上側）に当たるように回転角を決める
-    const targetMid = arcs[idx].midAngle;
-    const base = rotation % 360;
-    const extraSpins = 720 + 360 * Math.floor(Math.random()*2); // 2〜3回転
-    const jitter = (Math.random()-0.5)*2; // 微調整
-    const targetRotation = base + extraSpins - targetMid + jitter;
-    requestAnimationFrame(()=>setRotation(targetRotation));
+    // --- 重み付き抽選 ---
+    const r = Math.random() * total;
+    let acc = 0, idx = 0;
+    for (let i = 0; i < SEGMENTS.length; i++) {
+      acc += SEGMENTS[i].weight;
+      if (r <= acc) { idx = i; break; }
+    }
 
-    const durationMs = 3500;
-    setTimeout(()=>{
-      setSpinning(false); setResultIdx(idx);
-      const winner = segments[idx].label;
-      if (winner==="ご指名"){
-        const others = segments.filter(s=>s.label!=="ご指名").map(s=>s.label);
-        const chosen = others[Math.floor(Math.random()*others.length)];
+    // --- 真上で止まるように回転角を“スナップ”させる ---
+    const base  = ((rotation % 360) + 360) % 360;     // 現在角（0..359）
+    const extra = 720 + Math.floor(Math.random() * 360); // 2回転 + α（見た目用）
+    // (base + extra + snapDelta + midAngle) % 360 === 0 になるように調整
+    const snapDelta = (360 - ((base + extra + arcs[idx].midAngle) % 360)) % 360;
+    const target = base + extra + snapDelta;
+
+    setRotation(target);
+
+    // --- 停止後の処理 ---
+    const DURATION = 3500;
+    setTimeout(() => {
+      setSpinning(false);
+      setResultIdx(idx);
+
+      const winner = SEGMENTS[idx].label;
+      if (winner === "ご指名") {
+        const others = SEGMENTS.filter(s => s.label !== "ご指名").map(s => s.label);
+        const chosen = others[Math.floor(Math.random() * others.length)];
         setMessage(`（${chosen}）さん、誰かをご指名下さい！`);
       } else {
         setMessage(`${winner} さんの当選です！`);
       }
-    }, durationMs+60);
+    }, DURATION + 80);
   }
 
   return (
     <div style={page}>
-      <h1 style={title}>Spear Roulette</h1>
+      <h1 style={title}>Spia Roulette</h1>
 
-      <div style={{position:'relative'}}>
-        {/* 針 */}
-        <div style={{position:'absolute',top:-16,left:'50%',transform:'translateX(-50%)',zIndex:20}}>
-          <Pointer/>
+      {/* 上の固定針（ここに止まった人が当たり） */}
+      <div style={{ position: "relative", marginBottom: 8 }}>
+        <div style={{ textAlign: "center", fontSize: 12, color: "#475569" }}>
+          ⇧ ここに止まった名前が <b>当たり</b>
+        </div>
+        <div style={{ position: "absolute", top: 6, left: "50%", transform: "translateX(-50%)", zIndex: 20 }}>
+          <Pointer />
         </div>
 
-        {/* ルーレット本体 */}
+        {/* ルーレット本体（円盤だけが回る） */}
         <div style={wheelBox}>
-          <svg viewBox="0 0 400 400" style={{
-            width:340,height:340,userSelect:'none',
-            transform:`rotate(${rotation}deg)`,
-            transition:spinning?"transform 3.5s cubic-bezier(0.12,0.11,0,1)":"none",
-          }}>
-            <g transform="rotate(-90 200 200)">
-              {arcs.map((a,i)=>(
+          <svg
+            viewBox="0 0 400 400"
+            style={{
+              width: 320,
+              height: 320,
+              transform: `rotate(${rotation}deg)`,
+              transition: spinning ? "transform 3.5s cubic-bezier(0.12,0.11,0,1)" : "none",
+            }}
+          >
+            <g>
+              {arcs.map((a, i) => (
                 <g key={i}>
-                  <path d={a.path} fill={wheelColor(i)} stroke="#e2e8f0" strokeWidth="1"/>
-                  <text x={a.labelX} y={a.labelY} textAnchor="middle" dominantBaseline="middle"
-                        fontSize="14" fill="#0f172a"
-                        transform={`rotate(${a.midForText} ${a.labelX} ${a.labelY})`}>
-                    {segments[i].label}
+                  <path d={a.path} fill={sliceColor(i)} stroke="#e2e8f0" />
+                  <text
+                    x={a.labelX} y={a.labelY}
+                    textAnchor="middle" dominantBaseline="middle"
+                    fontSize="14" fill="#0f172a"
+                    transform={`rotate(${a.textAngle} ${a.labelX} ${a.labelY})`}
+                  >
+                    {SEGMENTS[i].label}
                   </text>
                 </g>
               ))}
-              <circle cx="200" cy="200" r="24" fill="#ffffff" stroke="#e2e8f0"/>
+              <circle cx="200" cy="200" r="22" fill="#fff" stroke="#e2e8f0" />
             </g>
           </svg>
+
+          {/* ★固定センターライン（SVGの外側に置くので回らない） */}
+          <div style={centerLine} />
         </div>
       </div>
 
-      <button onClick={start} disabled={spinning} style={spinning?btnDisabled:btn}>
+      <button onClick={startSpin} disabled={spinning} style={spinning ? btnDisabled : btn}>
         {spinning ? "回転中…" : "スタート"}
       </button>
 
-      <div style={{height:40,marginTop:16,fontSize:18}}>
-        {resultIdx!=null && (
-          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8}}>
-            <div style={{fontSize:28}}>🎉🎊</div>
-            <span>{message}</span>
+      <div style={{ height: 56, marginTop: 16, fontSize: 18, textAlign: "center" }}>
+        {resultIdx !== null && (
+          <div>
+            <div style={{ fontSize: 26, marginBottom: 4 }}>🎉</div>
+            <div>{message}</div>
           </div>
         )}
       </div>
@@ -97,43 +123,101 @@ export default function SpearRouletteApp() {
   );
 }
 
-/* ---------- 見た目 ---------- */
-const page  ={minHeight:'100vh',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',background:'#f8fafc',color:'#0f172a',padding:'24px'};
-const title ={fontSize:24,fontWeight:700,marginBottom:16};
-const wheelBox={width:360,height:360,borderRadius:'9999px',background:'#fff',border:'1px solid #e2e8f0',display:'grid',placeItems:'center',boxShadow:'0 1px 2px rgba(0,0,0,0.05)'};
-const btn   ={marginTop:24,borderRadius:16,background:'#0ea5e9',color:'#fff',padding:'12px 24px',fontSize:18,fontWeight:700,border:'none',boxShadow:'0 2px 6px rgba(0,0,0,0.1)',cursor:'pointer'};
-const btnDisabled={...btn,background:'#cbd5e1',cursor:'default'};
+/* ====== スタイル ====== */
+const page  = {
+  minHeight: "100vh",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#f8fafc",
+  color: "#0f172a",
+  padding: 16,
+};
+const title = { fontSize: 22, fontWeight: 700, marginBottom: 12 };
 
-/* ---------- パーツ ---------- */
-function Pointer(){
+// wheelBox は relative にして、上に centerLine を重ねられるようにする
+const wheelBox = {
+  width: 340, height: 340,
+  borderRadius: "9999px",
+  background: "#fff",
+  border: "1px solid #e2e8f0",
+  display: "grid", placeItems: "center",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+  position: "relative",
+};
+
+// 真上の固定センターライン（SVGの外）
+const centerLine = {
+  position: "absolute",
+  top: 20,                 // 微調整（円の内側に入るくらい）
+  left: "50%",
+  transform: "translateX(-50%)",
+  width: 2,
+  height: 140,            // 長さはお好みで
+  background: "#ef4444",
+  borderRadius: 1,
+  pointerEvents: "none",
+};
+
+const btn = {
+  marginTop: 8,
+  borderRadius: 14,
+  background: "#0ea5e9",
+  color: "#fff",
+  padding: "12px 24px",
+  fontSize: 18,
+  fontWeight: 700,
+  border: "none",
+  cursor: "pointer",
+};
+const btnDisabled = { ...btn, background: "#94a3b8", cursor: "default" };
+
+/* ====== パーツ：針（タイトル下の赤い三角） ====== */
+function Pointer() {
   return (
-    <svg width="24" height="28" viewBox="0 0 24 28" style={{filter:'drop-shadow(0 1px 1px rgba(0,0,0,0.2))'}}>
-      <path d="M12 0 L24 24 L0 24 Z" fill="#ef4444"/>
-      <rect x="9" y="24" width="6" height="4" rx="1" fill="#ef4444"/>
+    <svg width="24" height="26" viewBox="0 0 24 26" style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,.2))" }}>
+      <path d="M12 0 L24 22 L0 22 Z" fill="#ef4444" />
+      <rect x="9" y="22" width="6" height="4" rx="1" fill="#ef4444" />
     </svg>
   );
 }
 
-/* ---------- 幾何計算 ---------- */
-function wheelColor(i){const c=["#fef3c7","#e0f2fe","#dcfce7","#fae8ff","#ffe4e6","#ede9fe","#e2e8f0"];return c[i%c.length];}
-function buildArcs(segments){
-  const total=segments.reduce((a,b)=>a+b.weight,0);
-  let start=0; const cx=200,cy=200,r=160;
-  return segments.map(seg=>{
-    const sweep=(seg.weight/total)*360; const end=start+sweep;
-    const path=sectorPath(cx,cy,r,start,end);
-    const midAngle=start+sweep/2; const labelR=r*0.62;
-    const {x,y}=polar(cx,cy,labelR,degToRad(midAngle));
-    const midForText=midAngle+90;
-    const arc={path,startAngle:start,endAngle:end,midAngle,labelX:x,labelY:y,midForText};
-    start=end; return arc;
+/* ====== 円弧のジオメトリ ====== */
+function sliceColor(i) {
+  const colors = ["#ffe4e6","#e0f2fe","#dcfce7","#fae8ff","#fde68a","#e2e8f0","#dbeafe"];
+  return colors[i % colors.length];
+}
+
+// 0度＝真上／時計回り の極座標で円弧を作成
+function buildArcs(items) {
+  const total = items.reduce((a, b) => a + b.weight, 0);
+  let start = 0;
+  const cx = 200, cy = 200, r = 160;
+
+  return items.map(it => {
+    const sweep = (it.weight / total) * 360;
+    const end   = start + sweep;
+    const path  = sectorPath(cx, cy, r, start, end);
+    const mid   = start + sweep / 2;
+
+    const labelR = r * 0.62;
+    const { x, y } = polar(cx, cy, labelR, degToRad(mid));
+    const textAngle = mid + 90; // ラベルを読みやすく
+
+    const a = { path, startAngle: start, endAngle: end, midAngle: mid, labelX: x, labelY: y, textAngle };
+    start = end;
+    return a;
   });
 }
-function sectorPath(cx,cy,r,startDeg,endDeg){
-  const start=polar(cx,cy,r,degToRad(startDeg));
-  const end=polar(cx,cy,r,degToRad(endDeg));
-  const largeArc=endDeg-startDeg<=180?0:1;
-  return [`M ${cx} ${cy}`,`L ${start.x} ${start.y}`,`A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`,"Z"].join(" ");
+
+function sectorPath(cx, cy, r, startDeg, endDeg) {
+  const s = polar(cx, cy, r, degToRad(startDeg));
+  const e = polar(cx, cy, r, degToRad(endDeg));
+  const large = endDeg - startDeg > 180 ? 1 : 0;
+  return `M ${cx} ${cy} L ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y} Z`;
 }
-function polar(cx,cy,r,theta){const x=cx+r*Math.sin(theta);const y=cy-r*Math.cos(theta);return {x,y};}
-const degToRad = d => (d*Math.PI)/180;
+
+// 0度＝真上／時計回りでの極座標
+function polar(cx, cy, r, t) { return { x: cx + r * Math.sin(t), y: cy - r * Math.cos(t) }; }
+const degToRad = d => (d * Math.PI) / 180;
